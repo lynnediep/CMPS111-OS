@@ -1,0 +1,113 @@
+1. Goals
+The goal for this project is to modify the FreeBSD scheduler to use priority queues in its current scheduler. We will also learn how to experiment with operating system kernels, and to do work in such a way that might crash a computer. Modifying a kernal will ultimately lead us to have an OS that does not work, so we will learn how to manage multiple kernels, at least one of which works as well.
+
+2. Assumptions
+We are assuming that most of the program will consists of modifing sys/kern/sched_ule.c. And the guide provided on how to build a kernal, is the correct way of setting up the kernal for this project. We will not have to worry about hardware inventory, as it states in the assignment google doc, and there are only 3 cases we will have to implement: priority scheduling, splatter scheduling, and a comboination of both.
+
+3. Design
+First, we need to start understanding sched_ule.c in order to choose which functions we need to modify for the assigned cases. When insepcting the file, we noticed the functions tdq_add() and tdq_runq_add(), which we considerred moddifying. However, it seemed like these functions did not implment FIFO which we were looking for. After attending TA office hours, sections, and professor office hours, we learned that the functions we are supposed to modify are in kern_swtich.c. In kern_switch.c we are going to focus on runq_add() for changing the FIFO queue into a priority queue.
+
+For priority scheduling CASE 1:
+The function runq_add() seems like modifying it would properly change to queue to a priority queue. We only want to prioritize user queues. So by dividing the threads we need by 4, we find out the queues we want to affect. Table 4.2 in the FreeBSD manual gives us the thread-scheduling cases. For example, time-sharing user threads have a range of 120-223. Dividing this range by 4, we know to affect priorities 30-55. With this information, we implement an if statement in runq_add(). Within this if statement, we check if the prirority is within the range and for each tail, we insert the thread before the list if it has the higher priority. Else, we run runq_add() normally. Ideally this would function as a priority queue, thus satisfying case 1.
+
+For splatter CASE 2:
+Find the number of elements in the tail queue and generate a random number between 0 and that number. And insert into that position of the generated random number.
+
+For splatter scheduling and priority CASE 3:
+We have decided to design/implement Case 3 before doing Case 2 because we already have the priority queue implemented, and adjusting it to become both splatter and priority will be easier. We are still modifying the functions in kern_switch.c, more specifically we are modifying runq_add(). Going back to case 1, runq_add selects the priority to insert into a list and gets the thread. Instead, we generate a random number and insert to the run queue that has that number. If the thread prirority is in between the ranges we want, we generate a random number which would take over "pri". Essentially we only replace the value of "pri" and the priority queue would run normally as it does in case 1.
+
+Note: We initially modified runq_add() and runq_add_pri() thinking these functions affect the priority of the queue. However, after compiling and installing the kernel with our changes, the kernel would crash. Then we went to office hours to ask about this issue, and found out that we DO NOT have to modify runq_add_pri(). Hence the pseudo code and our actual code are only modifying runq_add(). Testing this code didn't make our kernel crash as well, so we believe we are doing this correctly.
+
+4. Pseudo Code:
+For Case 0 - we followed the guide on how to build a kernal, and that satisfies case 0.
+
+For Case 1 - 
+runq_add()
+	struct rqhead *rqh;
+
+	KASSERT(pri < RQ_NQS, ("runq_add_pri: %d out of range", pri));
+	td->td_rqindex = pri;
+	runq_setbit(rq, pri);
+	rqh = &rq->rq_queues[pri];
+	CTR4(KTR_RUNQ, "runq_add_pri: td=%p pri=%d idx=%d rqh=%p",
+	    td, td->td_priority, pri, rqh);
+	if(realtime user range < pri < realtime || timeshare < pri < idle){
+		int end_ins_bool = 1;
+		struct thread *curr_td;
+		TAILQ_FOREACH(curr_td, rqh, td_runq){
+			if ( curr_td->td_priority > td -> td_priority){
+				TAILQ_INSERT_BEFORE(curr_td, td, td_runq);
+				end_ins_bool = 0;
+			}
+		}
+		if(end_ins_bool){
+			TAILQ_INSERT_TAIL(rqh, td, td_runq);
+		}
+	}else{
+		if (flags & SRQ_PREEMPTED) {
+			TAILQ_INSERT_HEAD(rqh, td, td_runq);
+		} else {
+			TAILQ_INSERT_TAIL(rqh, td, td_runq);
+		}
+	}
+}
+
+For Case 2 -
+runq_add() {
+struct rqhead *rqh;
+	pri = td->td_priority / RQ_PPQ;
+	if(12<= pri<= 19){
+		pri = (random() % (8)) + 12;
+	}
+	if(30<=pri<=55){
+		pri = (random() % (26)) + 30;
+	}
+	if(56<= pri<= 63){
+		pri = (random() % (8)) + 56;
+	}
+	CTR4.....
+	if(12<= pri<= 19 || 30<=pri<=63){
+		int end_ins_bool = 1;
+		struct thread *curr_td;
+		struct thread *temp_td;
+		int queue_size = 0;
+		TAILQ_FOREACH_SAFE(curr_td, rqh, td_runq, temp_td){
+			queue_size ++;
+		}
+		int ins_pos = random() % queue_size;//position to insert thread
+		int curr_pos = 0;
+		TAILQ_FOREACH_SAFE(curr_td, rqh, td_runq, temp_td){
+			if(ins_pos<=curr_pos){
+				TAILQ_INSERT_BEFORE(curr_td, td, td_runq);
+				end_ins_bool = 0;
+				curr_pos ++;
+				break;
+			}
+		}
+		if(end_ins_bool){
+			TAILQ_INSERT_TAIL(rqh, td, td_runq);
+		}
+	else
+	if(flag)...
+}
+
+For Case 3 - 
+runq_add(){
+--code before--
+pri = td->td_priority / RQ_PPQ;
+if(12<= pri<= 19){
+		pri = (random() % (8)) + 12;
+	}
+	if(30<=pri<=55){
+		//implement splatter
+		//srandom(time(null)); - does not work atm
+		pri = (random() % (26)) + 30;
+	}
+	if(56<= pri<= 63){
+		pri = (random() % (8)) + 56;
+	}
+
+--code after--
+//has the same code as priority queue (case 1)
+
+}
