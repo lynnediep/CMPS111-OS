@@ -1,1 +1,50 @@
-File
+To compile create_disk.c, run this command:
+make (create_disk.c || create_diskv2.c)
+./create_disk || ./create_diskv2  disk_file (number of blocks)
+
+To compile file_system3.c, run this command:
+cc -Wall file_system3.c `pkg-config fuse --cflags --libs` -o file_system3
+sudo ./file_system3 -f mountdir/
+
+To compile file_system3v2.c, run this command:
+cc -Wall file_system3v2.c `pkg-config fuse --cflags --libs` -o file_system3v2
+sudo ./file_system3v2 -f mountdir/
+
+Then open a new terminal window to ssh in freebsd. Then cd into the directory with all of the programs, and run commands
+Ex. sudo ls mountdir/
+
+If error: "fuse: failed to open fuse device: No such file or directory" occurs, use command:
+kldload fuse.ko
+
+Then run file_system.c again.
+
+We made 2 different create_disk.c for each case.
+create_disk.c - 512B case
+create_diskv2.c - 8KB case
+
+We made 2 different file_systems.c for each case:
+file_system3.c - 512B case
+file_system3v2.c - 8KB case
+
+
+Overall design:
+
+We weren't very sure how to approach writing this program since there were not many good examples online for how to create a filesystem from scratch. Therefore, the focus of our effort was on creating the disk properly (using the instructions of the assignment) and getting the logic correct. As a result, our filesystem is not functional. However, it compiles and mounts properly, and we believe that the logic we have created is mostly sound ( with some minor math errors). 
+
+Create disk allows us to create a disk file for the file system. It takes as input the base file, and an int. The int determines how many blocks will be allocated. The main function with all the file system functions has a few methods that we focused on. 
+
+The function getattr() returns meta information such as the creation date, the date modified, and in the future extra information on the file it is called on, by looking through all files in current directory, finding the one it is looking for, and outputting it's data.
+
+The readdir function allows us to read from a specific block of memory. It reads the directory block from thefilesystem then loops through the directoryblock reading in blocks 1 at a time. When it reaches a -2 in the fattable, it has reached the end of the file and it stops reading.
+
+The mknod function first loops through the fattable to find the first space in memory that is free. It then extends the current directory and adds the number of the found block in the FAT table, and writes a new "directory header/entry" file into that block. Along the way, it frees another memory space(marking it as -2 in fat table),and attaches it as start of file to the new directory header. It then sets the new directory block and creates meta information for the file (such as accesstime, modification time, startblock etc), while also setting the new information for the old memory block. Ideally, it would also add a . and a .. entry to the new directory, but we didn't have enough time for that, and just did what we could in the time we had.
+The mkdir function is similar to mknod, but sets the flag to 1
+
+For the open function, we did not get around to implementing it properly but the general idea was that we would start from the root directory and, based on how many levels we were from the root directory, we would enter each directory (by reading blocks) and checking if the filename/directory name was the same as the filename stored in the block. There would be a flag that determines whether a given block is a directory or a file. If it was a file, we return the file. If it was a directory, we would go down 1 more level to find the file. Once we found the file, we return the starting block index. 
+
+Future other planned implementations:
+pointer = int of memore block
+open: set currently open file pointer
+read: read from file with pointer on it currently.
+write: add data to pointed file,
+close: remove pointer from file

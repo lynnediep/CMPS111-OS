@@ -1,0 +1,311 @@
+Asgn4 Design Doc
+
+1. Goal
+The goal for this project is to use the FUSE file system framework to implement a simple FAT-based file system in user space. This time, we will be running code in user space, but still tying closely to the OS kernel. So, this assignment will give us experience on extending an operating system using user code and give us an idea of how we can quickly implement new file system functionality.
+
+2. Assumptions
+We are assumming that we will be using FUSE to build a FAT-based file system, and we are allowed to use the examples provided by the FUSE library to our advantage. We are assumming that we won't be modifying the kernel like previous assignments. Additionally, we are assumming the information about blcoks, superblocks, and FAT blocks on the assignment document are correct, and we are going to base our code on this information.
+
+3. Design
+In the assignment document, it states "Write a user-space program, not running through FUSE, to initialize a brand-new file system. It should take two arguments, the name of the file to contain the disk image, and the number of blocks in the file system, and then create the disk image". So for this, our program will take the two arguments to create an empty file to use as the disk image based on the number of blocks and the name of the file. As for the block size, we will hardcode the size in the script and indicate where it should be modified in the script in our README. At first we used open() to create the disk image, but when trying to mount it to file_system.c, it would not compile and ouput an error stating that the file was not a directory. So we changed open() to mkdir(), and when mounting the file to file_system.c it would compile. We began coding create_disk.c and it took awhile to get our math right. After discussion on canvas, we figured out we are supposed to make a file, and mount it with our file system, so that changed our logic a bit. We made 2 seperate create_disks.c for each case.
+
+For the file system itself, we specifically looked at hello.c and fuseexmp.c in the example folder of the fuse library. There, we saw functions that fitted what we needed in order to buld our file system. We need to at least support all the following basic operations: file and directory creation/deletion, directory traversal, file reads, writes and seeks. In these example files, they used functions that fits these criterias, so we are basing our program off of that. Of course, we will modify them to fit what the assignment doc states, but this is a good base to start off our code. In the file table each entry (4 bytes) is a single number. That number is either an EOF (-2) or a pointer to where a directory continues, it also corresponds to the same block where data continues in memory. (That data file block size is written in the superblock), we made mknod() and mkdir() with this information, where we tried to find a free space in FAT, and create a new file/directory using lseek() and write().
+
+
+Create disk allows us to create a disk file for the file system. It takes as input the base file, and an int. The int determines how many blocks will be allocated. The main function with all the file system functions has a few methods that we focused on. 
+
+The function getattr() returns meta information such as the creation date, the date modified, and in the future extra information on the file it is called on, by looking through all files in current directory, finding the one it is looking for, and outputting it's data.
+
+The plan for readdir was to go through the fattable and search for an entry where the name == the name of the directory we are looking for. Once that block is found, we determine the size of the file. If it is only 1 block, we read the block in its entirety then return. If it is longer than 1 block, we continually read blocks pointed by the fattable until we reach an entry with a -2. Then we know this is the end of file. So we read that final block then return.
+
+The mknod function first loops through the fattable to find the first space in memory that is free. It then extends the current directory and adds the number of the found block in the FAT table, and writes a new "directory header/entry" file into that block. Along the way, it frees another memory space(marking it as -2 in fat table),and attaches it as start of file to the new directory header. It then sets the new directory block and creates meta information for the file (such as accesstime, modification time, startblock etc), while also setting the new information for the old memory block. Ideally, it would also add a . and a .. entry to the new directory, but we didn't have enough time for that, and just did what we could in the time we had.
+The mkdir function is similar to mknod, but sets the flag to 1
+
+For the open function, we did not get around to implementing it properly but the general idea was that we would start from the root directory and, based on how many levels we were from the root directory, we would enter each directory (by reading blocks) and checking if the filename/directory name was the same as the filename stored in the block. There would be a flag that determines whether a given block is a directory or a file. If it was a file, we return the file. If it was a directory, we would go down 1 more level to find the file. Once we found the file, we return the starting block index. 
+
+
+We used several references throughout this program, so the websites we got information from will be posted at the beginning of each file.
+
+4. What each function should do, step by step :
+    xmp_getattr: 1. Find directory specified in last part of path, by going through all Data linked to fatblocks starting from the current one. \
+                2. Copy information from directory into stats struct, and return ENOENT if we can't find it.
+    xmp_readdir: 1.Find directory (as in xmp_get attr) - check it is a directory
+                2. Read directory blocks to output, one data block at a time until last block, keeping track of bits lets from recorded file length.
+                3. Read recorded number of bits to output
+    xmp_mknod: 1. Finds 2 empty fat blocks.
+                2. Uses one fat block to extend a directory entry.
+                3. Uses the other fat block to create a new entry for the new directory. (setting links between fat blocks and -2 as needed.
+                (At the moment, our code doesn't find the end of the first directory, which should be fixed to allow adding to the end of the directory
+                4. Makes header/directory entry, linking second block as the start of the new directory.
+                5. Puts header in data space linked with first fat block
+                6. Edits header of curr directory
+                6. Writes all Fat blocks and data space blocks back to fat table and data blocks
+    xmp_mkdir:
+        1. same as mknod
+        2. Also adds . and .. entries to new directory, as well as changing flag value in new directory
+    xmp_unlink:
+        1. not sure what this does
+    xmp_rmdir:
+        1.find start of directory to remove (see getattr), keeping previous entry recorded to write in fatblock
+        2.if exists, find next entry in fat_block sequence, and write it in prev block, else write -2.
+        3. set current fat_block entry to 0.
+        No need to remove any directory entries from data, since they will be overwritten with mkdir.
+    xmp_open:
+        1. find directory as in get_attr, check that it is a file, not a directory by looking at flags
+        2. set global curr_directory to block number of data of selected directory
+        3. Possibly record FAT number of open file in queue.
+    xmp_read:
+        1. Check file pointer is set(set in open)
+        2. Check file is readable
+        3. Set size to file size
+        4. Read file data block by data block, keeping track of position, until reached final block and outputted size%64 bytes
+    xmp_write:
+        Input data into file, splitting it and recording it in different blocks, creating new blocks as necessary
+    xmp_close:
+        closes file, removing it from queue and removing current_open pointer from it. 
+
+
+
+
+5. Pseudocode .
+create_disk.c for case 512
+int main(int argc, char *argv[]) {
+	int disk = open(argv[1]);
+	int block = (argv[2]);
+	//error handling
+	//set up super block
+	super_block->magic_number = 0xfa19283e;
+	super_block->block_size = 512;
+	super_block->n = blocks;
+	//set up fat size
+	super_block->k = (super_block->n / 128) + 1;
+	super_block->root_block = super_block->k + 1;
+	//set up fat block
+	/*A 0 in the FAT means that a block is free, and a -2  means that the block is the last one in the file.
+	Otherwise, the entry in the file allocation is the block number of the next block in the file.
+	As noted above, the first k+1 entries of the FAT are invalid, and should be set to -1 so they're never
+	allocated. You can also use -1 to indicate other FAT entries that should never be allocated.*/
+	for(int i = 0; i < super_block->k + 1; i++) {
+		for(int j = 0; j < 128; j++) {
+			if(j < super_block->k + 1) {
+				fat_block->fat_entry[j] = -1;
+			}
+			else {
+				fat_block->fat_entry[j] = 0;
+			}
+		}
+	}
+	//set up root directory
+	dir_entry[0].flag = 1;
+	char fullname[24] = "/";
+	strcpy(dir_entry[0].file_name, fullname);
+
+	close(disk);
+
+}
+
+create_disk.c for case 8KB
+int main(int argc, char *argv[]) {
+	//same thing as above but instead of 512 its 8192
+}
+file_system.c
+
+static int xmp_getattr(const char *path, struct stat *stbuf)
+{
+	stbuf->st_uid = getuid();
+	stbuf->st_gid = getgid();
+	stbuf->st_atime = time( NULL );
+	stbuf->st_mtime = time( NULL );
+
+	if ( strcmp( path, "/" ) == 0 )
+	{
+		stbuf->st_mode = S_IFDIR | 0755;
+		stbuf->st_nlink = 2;
+	}
+	else
+	{
+		stbuf->st_mode = S_IFREG | 0644;
+		stbuf->st_nlink = 1;
+		stbuf->st_size = 1024;
+	}
+
+	return 0;
+
+}
+static int xmp_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
+		       off_t offset, struct fuse_file_info *fi)
+{
+
+	(void) offset;
+	(void) fi;
+
+	if (strcmp(path, "/") != 0)
+		return -ENOENT;
+
+	filler(buf, ".", NULL, 0); //current directory
+	filler(buf, "..", NULL, 0); //parent directory
+
+	return 0;
+}
+
+
+static int xmp_mknod(const char *path, mode_t mode, dev_t rdev)
+{
+int i,j;
+//	void* file_block = calloc(sizeof(struct directory),1);
+	int free_pos = -1;
+	int fat_pos = -1;
+	void* fattable = calloc(super.k * sizeof(struct fatblock),1);
+	
+
+	lseek(disk_fd, 512, SEEK_SET);
+	fread(fattable, sizeof(struct fatblock),super.k, disk_fd);  
+	//read(disk_fd, fattable, sizeof(fatblock)* super->k);
+	 
+
+
+	//find free space in FAT
+	for(i=1; i < (super.k) + 1; i++){
+		fat_pos = i;
+		for (j=0; j< 128; j ++){
+			free_pos = j;
+//			if (fattable[fat_pos]->fat_entry[free_pos*4] == 0){
+//				fattable[fat_pos]->fat_entry[free_pos*4] = -2;
+//				fattable[curr_block]->fat_entry[curr_block_pos] = (i-1)*128 + j;
+				break;
+		//	}
+		}
+	}
+	int dir_first_fat_pos = -1;
+	int dir_first_free_pos = -1;
+	
+	for(i=1; i < (super.k) + 1; i++) {
+		dir_first_fat_pos = i;
+		for(j = 0; j < 128; j++) {
+			dir_first_free_pos = j;
+	//		if(fattable[dir_first_fat_pos]->fat_entry[dir_first_free_pos*4] == 0){
+	//			fattable[dir_first_fat_pos]->fat_entry[dir_first_free_pos*4] = -2;
+				break;
+			}
+	//	}
+	}
+	struct directory *new_dir = calloc(sizeof(struct directory),1);
+	char* name = strrchr(path, '/');
+	strcpy(new_dir->file_name, name+1);
+	//new_dir->file_name = name;
+	new_dir->creation_time = time(NULL);
+	new_dir->modification_time = time(NULL);
+	new_dir->access_time = time(NULL);
+	new_dir->file_length = 0;
+	new_dir->start_block = ((dir_first_fat_pos-1) * 128) + (dir_first_free_pos-1);
+	new_dir->flag = 1;
+	
+	lseek(disk_fd,(super.k * 512) + (fat_pos * 512 + free_pos *4), SEEK_SET);
+	write(disk_fd, (void*) new_dir , 512);//might have to memcpy new_dir to buffer first.
+	fwrite(fattable, sizeof(struct fatblock), super.k, disk_fd);
+
+
+}
+
+static int xmp_mkdir(const char *path, mode_t mode)
+{
+	same as mknod()
+}
+
+static int xmp_unlink(const char *path)
+{
+	int res;
+	res = remove(path);
+	if(res) {
+		perror(path);
+	}
+	return 0;
+
+}
+
+static int xmp_rmdir(const char *path)
+{
+	int res;
+
+	res = rmdir(path);
+	if (res == -1)
+		return -errno;
+
+	return 0;
+}
+
+
+static int xmp_open(const char *path, struct fuse_file_info *fi)
+{
+	struct directory *new_dir = calloc(sizeof(struct directory),1);
+	return new_dir->start_block;
+
+}
+
+static int xmp_read(const char *path, char *buf, size_t size, off_t offset,
+		    struct fuse_file_info *fi)
+{
+	size_t len;
+	(void) fi;
+	if(strcmp(path+1, options.filename) != 0)
+		return -ENOENT;
+
+	len = strlen(options.contents);
+	if (offset < len) {
+		if (offset + size > len)
+			size = len - offset;
+		memcpy(buf, options.contents + offset, size);
+	} else
+		size = 0;
+
+	return size;
+
+}
+
+static int xmp_write(const char *path, const char *buf, size_t size,
+		     off_t offset, struct fuse_file_info *fi)
+{
+	int fd;
+	//int res;
+
+	(void) fi;
+	fd = open(path, O_WRONLY);
+	if (fd == -1)
+		return -errno;
+
+	pwrite(fd, buf, size, offset);
+	//if (res == -1)
+	//	res = -errno;
+
+	close(fd);
+	//return res;
+	return 0;
+
+}
+
+static struct fuse_operations xmp_oper = {
+	.getattr	= xmp_getattr,
+	.readdir	= xmp_readdir,	//read directory
+	.mknod		= xmp_mknod,	//creates file
+	.mkdir		= xmp_mkdir,	//creates directory
+	.unlink		= xmp_unlink,	//deletes file
+	.rmdir		= xmp_rmdir,	//deletes empty directory
+	.open		= xmp_open,	//file open
+	.read		= xmp_read,	//file read
+	.write		= xmp_write,	//file writes
+};
+
+
+int main(int argc, char *argv[])
+{
+	if(argc < 1) {
+		perror("File is NULL");
+		return(-1);
+	}
+
+	return fuse_main(argc, argv, &xmp_oper, NULL);
+}
+
+
+
+
