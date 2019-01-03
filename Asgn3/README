@@ -1,1 +1,8 @@
-Page Scheduling in FreeBSD
+Had issues of logging the statistics for the project. 
+In vm_pageout_Clock.c and vm_pageout_FIFO.c, we had the print statments ready to print out the statistics for data, but would never actually print out onto the console.
+Additionally, we were able to change the clock algorithm to FIFO as stated in the assignment document.
+We made a reasonable attempt at this part of the assignment, and was able to benchmark the runtime. So the graph depicts that data we were able to find.
+WE also had issues coming up with a good way to change to FIFO at first, and tried multiple expansive solutions - a 100 line one to try and merge the 2 queues
+and a long change to the page code that attempted to changed it to FIFO by altering the code to always remove the first item when delete or replace are called (This one is in vm_page1.c. Niether worked.
+
+The "attempts" folder contains all the modifications we had for the kernel, that ended up not making to the final submission.
