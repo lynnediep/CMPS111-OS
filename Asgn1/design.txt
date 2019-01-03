@@ -1,0 +1,248 @@
+Lynne Diep
+CMPS 111, Fall 2018
+Asgn1 Design Document
+CruzID: lytdiep
+
+1. Goal
+The goal of this assignment is to implement a FreeBSD shell program. Additionally, this assignment will allow me to become familiar with the system call interface and processes. Further C programming skills will be developed/warmed up when developing this assignment as well.
+
+2. Assumptions
+I am assuming shell.l reads and parses a line of input, and argshell.c is the base we start our shell program on. I am assuming the system calls that are listed in the assignment are available to us to utilize, and all the supported features are the ones we will be graded on. Additionally, I will assume the outputs for each command will be the same output if I use these commands on a real shell program, such as my laptop's terminal.
+
+3. Design
+By going to discussion on Monday, the TA gave us a brief overview of what the program should be/look like. With her advice, I am basing my code on her guidance. To create a simple shell program, there will need to be an infinite loop. Within that loop I would need to use fork(), which creates another process. With the output of fork(), there will be an if statement asking if the child is 0. If the child is 0, then I would call exevp() to execute the command. If the there is no child process, then that means I am still in the parent process. Which then I would use wait(), and ultimately break the program. During the loop, I would do cases if the arguments were characters, such as "<, >, |, etc." and program them appropriately.
+
+For the "<", ">", "<<", and ">>" commands, I will use open() to open the files, and depending on the direction of the arrow(s), I will use O_RODNLY, O_WRONLY, O_APPEND, or O_CREAT. I will do error handling with the files and ultimately use dup2() for the file. Lastly I will use execvp() to run the command.
+
+For the "|" command, I found this really useful references (https://www.cs.rutgers.edu/~pxk/416/notes/c-tutorials/pipe.html & http://www.cs.loyola.edu/~jglenn/702/S2005/Examples/dup2.html) which shows how the pipe() system call works. Based on these references I will design my function accordingly.
+
+For the "&" command, I learned that it is a redirection of standard error. After googling what that meant, I found this great reference (https://stackoverflow.com/questions/14505079/redirect-stdout-stderr-to-syslog). Using this reference, I will design my & function.
+
+For the "cd" command, the professor gave us system calls to use to implement these commands. So I will use chdir() and getcwd() for this portion of the program.
+
+For the other commands that involve multiple commands (|&, >&, etc.) I will make different functions for them and combine the single functions together. For example if the command is "|&", then I will make a seperate function that combines the code of | and &.
+
+4. Pseudocode
+HANDLE: ;, |, &, >, >>, <, <<, >&, &<, &<<, >|
+*using argshell.c as base
+
+void input {
+pid = fork();
+//error handling for pid
+else if pid == 0
+    args[i] == NULL
+    open(file, read only)
+    //error handling for file
+    dup2(file, STDIN)
+    close(file)
+    execvp()
+else
+    waitpid()
+}
+
+void output{
+pid = fork();
+//error handling for pid
+else if pid == 0
+    args[i] = NULL
+    open(file, write|create)
+    //file error handling
+    dup2(file, STDOUT)
+    close(file)
+    execvp()
+else
+    waitpid()
+}
+
+void pipe{ // websites used for reference: https://www.cs.rutgers.edu/~pxk/416/notes/c-tutorials/pipe.html & http://www.cs.loyola.edu/~jglenn/702/S2005/Examples/dup2.html
+ int pipes[10];
+ char *input = begining of args
+ char *output = args after "|"
+
+ if(pipe(pipes) < 0)
+  //error handling
+
+ pid = fork()
+ if(pid < 0) 
+ //error handling
+ else if pid == 0
+     dup2(pipes[1], STDOUT_FILENO)
+     close(pipes[0])
+     close(pipes[1])
+     if(end == 0)
+         execvp(start, input)
+
+    pid2 = fork()
+    if(pid2 < 0)
+        //error handling
+    else pid2 == 0
+        dup2(pipes[0], STDIN_FILENO)
+	close(pipes 1)
+	close(pipes 2)
+	execvp(output, output)
+
+    else
+        waitpid(0,&status,0);
+}
+
+void pipe_and{
+ same as pipe() but at another dup()
+ dup2(pipes[1], STDERR_FILENO)
+ &&
+ dup2(pipes[0], STDERR_FILENO)
+}
+
+void semicolon{
+    char **output = args[i+1]
+
+    pid = fork()
+    //error handling
+    else if pid = 0
+    args[i] == NULL
+    execvp(args[0], args) //args before ;
+    wait()
+
+    pid2 = fork()
+    //error handling
+    else if pid2 == 0
+    execvp(output[0], output) //args after ;
+    wait()
+
+}
+
+void append() {
+//same as output but open(file, append)
+}
+
+void and_sign() {
+ pid = fork()
+ if(pid < 0) 
+ //error handling
+ else if pid == 0
+     args[i] == NULL
+     error_file = open(args[i+1], O_WRONLY)
+     //file error handling
+     dup2(error_file, STDERR_FILENO)
+     close(file)
+     execvp()
+
+     else {
+     waitpid()
+     }
+}
+
+void output_and() {
+ pid = fork()
+ if (pid < 0)
+ // error handling
+ else if pid == 0
+    args[i] = NULL
+    direct_file = open(args[i+1], O_WRONLY | O_CREAT);
+    //error handling for file
+    dup3(direct_file, STDOUT_FILENO, STDERR_FILENO);
+    close(file)
+    execvp()
+
+    else {
+    waitpid()
+    }
+}
+
+void input_and() {
+ pid = fork();
+ if(pid < 0)
+ //error handling
+ else if pid == 0
+   args[i] = NULL
+   redirect_file = open(args[i+1], O_RDONLY);
+   //error handling for file
+   dup3(redirect_file, STDERR_FILENO, STDIN_FILENO)
+   close(file)
+   execvp()
+
+   else {
+    waitpid()
+   }
+}
+
+void output_append() {
+ pid = fork();
+ if(pid < 0)
+ //error handling
+ else if pid == 0
+     args[i] = NULL
+     direct_file = open(args[i+1], O_APPEND | O_CREAT)
+     //error handling for file
+     dup3(direct_file, STDERR_FILENO, STDOUT_FILENO)
+     close(direct_file)
+     execvp(args[0], args);
+
+     else {
+      waitpid(0,&status,0);
+     }
+}
+
+
+void run {
+pid = fork()
+//pid errors
+execvp()
+else{
+wait()
+}
+}
+
+int main() {
+  getcwd(cwd, FILENAME_MAX) // get og directory
+  args = get_args()
+  for(all args)
+      //error handling
+      if args == "cd"
+          chdir(args) //if args != NULL
+	  else if (args[1] == NULL
+	      chdir(cwd)
+      else if args == "exit"
+          exit()
+      else if args == "<" || "<<"
+          input()
+      else if args == ">"
+          output()
+      else if args[1] == NULL
+          run()
+      else if args == ">>"
+          append()
+      else if args == ";"
+          semicolon()
+      else if args == "|"
+          num_pipes[counter] = i
+	  counter ++
+	  args[i] = NULL
+	  i++
+      else if args == "&"
+          and_sign()
+      else if args == ">&"
+          output_and(args,i);
+      else if args == "&<"
+          input_and(args,i);
+      else if args == "&<<"
+          input_and(args,i);
+      else if args == ">>&"
+          output_append(args,i);
+      else if args == "|&"
+          num_pipes_and[count_and] = i
+	  count_and ++
+	  args[i] == NULL
+	  i++
+
+     for( i = 0; i < counter; i++) {
+         pipe_counter = num_pipes[i] - num_pipes[0]
+	     pipe_counter --
+     } pipe(args,num_pipes[i], pipe_counter)
+
+     for (i = 0; i < counter_and; i++) 
+         pipe_counter_and = num_pipes[i] - num_pipes[0]
+	 pip_counter_and--
+
+	 pipe_and(args, num_pipes_and[i], pipe_counter_and)
+
+}
